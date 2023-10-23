@@ -6,7 +6,7 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-# Import necessary modules for TensorFlow 2.x
+# Import necessary modules for TensorFlow 2.
 from . import autosummary
 from . import custom_ops
 from . import network
