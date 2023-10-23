@@ -1,27 +1,10 @@
-﻿# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
 #
 # NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
+# and proprietary rights in and to this software, related documentation,
+# and any modifications thereto. Any use, reproduction, disclosure, or
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
-
-"""Helper for adding automatically tracked values to Tensorboard.
-
-Autosummary creates an identity op that internally keeps track of the input
-values and automatically shows up in TensorBoard. The reported value
-represents an average over input components. The average is accumulated
-constantly over time and flushed when save_summaries() is called.
-
-Notes:
-- The output tensor must be used as an input for something else in the
-  graph. Otherwise, the autosummary op will not get executed, and the average
-  value will not get accumulated.
-- It is perfectly fine to include autosummaries with the same name in
-  several places throughout the graph, even if they are executed concurrently.
-- It is ok to also pass in a python scalar or numpy array. In this case, it
-  is added to the average immediately.
-"""
 
 from collections import OrderedDict
 import numpy as np
@@ -43,7 +26,6 @@ _immediate = OrderedDict()  # name => update_op, update_value
 _finalized = False
 _merge_op = None
 
-
 def _create_var(name: str, value_expr: TfExpression) -> TfExpression:
     """Internal helper for creating autosummary accumulators."""
     assert not _finalized
@@ -63,18 +45,17 @@ def _create_var(name: str, value_expr: TfExpression) -> TfExpression:
         v = [size_expr, v, tf.square(v)]
     else:
         v = [size_expr, tf.reduce_sum(v), tf.reduce_sum(tf.square(v))]
-    v = tf.cond(tf.is_finite(v[1]), lambda: tf.stack(v), lambda: tf.zeros(3, dtype=_dtype))
+    v = tf.cond(tf.math.is_finite(v[1]), lambda: tf.stack(v), lambda: tf.zeros(3, dtype=_dtype))
 
     with tfutil.absolute_name_scope("Autosummary/" + name_id), tf.control_dependencies(None):
         var = tf.Variable(tf.zeros(3, dtype=_dtype), trainable=False)  # [sum(1), sum(x), sum(x**2)]
-    update_op = tf.cond(tf.is_variable_initialized(var), lambda: tf.assign_add(var, v), lambda: tf.assign(var, v))
+    update_op = tf.cond(tf.math.is_variable_initialized(var), lambda: tf.assign_add(var, v), lambda: tf.assign(var, v))
 
     if name in _vars:
         _vars[name].append(var)
     else:
         _vars[name] = [var]
     return update_op
-
 
 def autosummary(name: str, value: TfExpressionEx, passthru: TfExpressionEx = None, condition: TfExpressionEx = True) -> TfExpressionEx:
     """Create a new autosummary.
@@ -109,13 +90,12 @@ def autosummary(name: str, value: TfExpressionEx, passthru: TfExpressionEx = Non
         if condition:
             if name not in _immediate:
                 with tfutil.absolute_name_scope("Autosummary/" + name_id), tf.device(None), tf.control_dependencies(None):
-                    update_value = tf.placeholder(_dtype)
+                    update_value = tf.compat.v1.placeholder(_dtype)
                     update_op = _create_var(name, update_value)
                     _immediate[name] = update_op, update_value
             update_op, update_value = _immediate[name]
             tfutil.run(update_op, {update_value: value})
         return value if passthru is None else passthru
-
 
 def finalize_autosummaries() -> None:
     """Create the necessary ops to include autosummaries in TensorBoard report.
@@ -190,4 +170,4 @@ def save_summaries(file_writer, global_step=None):
         with tf.device(None), tf.control_dependencies(None):
             _merge_op = tf.summary.merge_all()
 
-    file_writer.add_summary(_merge_op.eval(), global_step)
+    file_writer.add_summary(_merge_op, global_step)
